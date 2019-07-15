@@ -20,14 +20,23 @@ void cairo_close_x11_surface(cairo_surface_t *sfc) {
   XCloseDisplay(dsp);
 }
 
-static int init_x11_context(X11Context *c) {
-  u_int16_t width = 300;
-  u_int32_t height = 300;
+static int init_x11_context(X11Context *c, unsigned int parent_window_id) {
+  u_int16_t width = 1280;
+  u_int32_t height = 720;
   c->display = XOpenDisplay(NULL);
   c->visual = DefaultVisual(c->display, 0);
+
+  unsigned int parent_window;
+  if(parent_window_id) {
+    printf("Attaching to parent XID %d\n", parent_window_id);
+    parent_window = parent_window_id;
+  } else {
+    parent_window = RootWindow(c->display, 0);
+  }
+
   c->window = XCreateSimpleWindow(
     c->display,
-    RootWindow(c->display, 0), 0, 0,
+    parent_window, 0, 0,
     width, height,
     1, 0, 0
   );
@@ -108,18 +117,23 @@ static void processEvent(X11Context *x11_context, cairo_t *cairo_context, cairo_
 }
 
 int main(int argc, char **argv) {
-  X11Context x11ctx;
-  init_x11_context(&x11ctx);
+  unsigned int parent_window_id = 0;
+  if(argc >= 2) {
+    parent_window_id = atoi(argv[1]);
+  }
+
+  X11Context x11_context;
+  init_x11_context(&x11_context, parent_window_id);
 
   cairo_surface_t *cairo_surface;
-  create_x11_surface(&cairo_surface, &x11ctx);
+  create_x11_surface(&cairo_surface, &x11_context);
 
   cairo_t *ctx = cairo_create(cairo_surface);
 
   paint(ctx, cairo_surface);
 
   while (1) {
-    processEvent(&x11ctx, ctx, cairo_surface);
+    processEvent(&x11_context, ctx, cairo_surface);
   }
 
   cairo_destroy(ctx);
