@@ -8,72 +8,11 @@
 #include <stdlib.h>
 
 typedef struct {
-
+  Display* display;
+  Visual* visual;
+  Window window;
 } X11Context;
 
-int cairo_check_event(cairo_surface_t *sfc, int block) {
-  char keybuf[8];
-  KeySym key;
-  XEvent e;
-
-  for (;;) {
-    if (block || XPending(cairo_xlib_surface_get_display(sfc)))
-      XNextEvent(cairo_xlib_surface_get_display(sfc), &e);
-    else
-      return 0;
-
-    switch (e.type) {
-    case ButtonPress:
-      return -e.xbutton.button;
-    case KeyPress:
-      XLookupString(&e.xkey, keybuf, sizeof(keybuf), &key, NULL);
-      break;
-      // return key;
-    case ConfigureNotify:
-      printf("ConfigureNotify\n");
-      break;
-    default:
-      fprintf(stderr, "Dropping unhandled XEevent.type = %d.\n", e.type);
-    }
-  }
-}
-
-/*! Open an X11 window and create a cairo surface base on that window.
- * @param x Width of window.
- * @param y Height of window.
- * @return Returns a pointer to a valid Xlib cairo surface. The function does
- * not return on error (exit(3)).
- */
-cairo_surface_t *cairo_create_x11_surface0(int x, int y) {
-  Display *dsp;
-  Drawable da;
-  int screen;
-  cairo_surface_t *sfc;
-
-  if ((dsp = XOpenDisplay(NULL)) == NULL)
-    exit(1);
-  screen = DefaultScreen(dsp);
-  da = XCreateSimpleWindow(dsp, DefaultRootWindow(dsp), 0, 0, x, y, 0, 0, 0);
-  XSelectInput(dsp, da, ButtonPressMask | KeyPressMask);
-  XMapWindow(dsp, da);
-
-  // unsigned int width, height;
-  // XGetGeometry(dsp, da, NULL, NULL, NULL, &width, &height, NULL, NULL);
-
-  XWindowAttributes window_attributes;
-  XGetWindowAttributes(dsp, da, &window_attributes);
-
-  printf("width: %d, height: %d\n", window_attributes.width,
-         window_attributes.height);
-
-  sfc = cairo_xlib_surface_create(dsp, da, DefaultVisual(dsp, screen), x, y);
-  cairo_xlib_surface_set_size(sfc, x, y);
-
-  return sfc;
-}
-
-/*! Destroy cairo Xlib surface and close X connection.
- */
 void cairo_close_x11_surface(cairo_surface_t *sfc) {
   Display *dsp = cairo_xlib_surface_get_display(sfc);
 
@@ -81,17 +20,33 @@ void cairo_close_x11_surface(cairo_surface_t *sfc) {
   XCloseDisplay(dsp);
 }
 
+static int init_x11_context(X11Context *c) {
+  u_int16_t width = 300;
+  u_int32_t height = 300;
+  c->display = XOpenDisplay(NULL);
+  c->visual = DefaultVisual(c->display, 0);
+  c->window = XCreateSimpleWindow(
+    c->display,
+    RootWindow(c->display, 0), 0, 0,
+    width, height,
+    1, 0, 0
+  );
+  XSelectInput(c->display, c->window, ButtonPressMask | ExposureMask | StructureNotifyMask);
+  XMapWindow(c->display, c->window);
+  return 0;
+}
 
-int main(int argc, char **argv) {
-  cairo_surface_t *sfc;
-  cairo_t *ctx;
+static int create_x11_surface(cairo_surface_t **sfc, X11Context *c) {
+  u_int16_t width = 300;
+  u_int32_t height = 300;
+  *sfc = cairo_xlib_surface_create(c->display, c->window, c->visual, width, height);
+  cairo_xlib_surface_set_size(*sfc, width, height);
+  return 0;
+}
 
-  sfc = cairo_create_x11_surface0(500, 500);
-
-  ctx = cairo_create(sfc);
-
+static void cairo_paint_image(cairo_t *ctx, char *path) {
   cairo_surface_t *image;
-  image = cairo_image_surface_create_from_png("bg1.png");
+  image = cairo_image_surface_create_from_png(path);
 
   int w = cairo_image_surface_get_width(image);
   int h = cairo_image_surface_get_height(image);
@@ -102,33 +57,69 @@ int main(int argc, char **argv) {
   cairo_paint(ctx);
 
   cairo_surface_destroy(image);
+}
 
+static void cairo_paint_text(cairo_t *ctx, char *text) {
   cairo_text_extents_t extents;
 
-  const char *utf8 = "cairo";
   double x, y;
 
-  cairo_select_font_face(ctx, "Sans", CAIRO_FONT_SLANT_NORMAL,
-                         CAIRO_FONT_WEIGHT_NORMAL);
+  cairo_select_font_face(ctx, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
 
   cairo_set_font_size(ctx, 100.0);
-  cairo_text_extents(ctx, utf8, &extents);
+  cairo_text_extents(ctx, text, &extents);
 
   x = 25.0;
   y = 150.0;
 
   cairo_set_source_rgba(ctx, 1, 1, 1, 0.8);
   cairo_move_to(ctx, x, y);
-  cairo_show_text(ctx, utf8);
+  cairo_show_text(ctx, text);
+}
+
+static void paint(cairo_t *ctx) {
+  cairo_paint_image(ctx, "bg1.png");
+  cairo_paint_text(ctx, "Test Text");
+}
+
+static void processEvent(X11Context *x11_context, cairo_t *cairo_context) {
+  XEvent ev;
+  XNextEvent(x11_context->display, &ev);
+  switch (ev.type) {
+  case ConfigureNotify: {
+    XConfigureEvent *event;
+    event = ((XConfigureEvent*) &ev);
+    printf("width: %d, height: %d\n", event->width, event->height);
+    break;
+  }
+  case Expose:
+    printf("Expose\n");
+    paint(cairo_context);
+    break;
+  case ButtonPress:
+    printf("ButtonPress\n");
+    exit(0);
+  default:
+    printf("unknown event: %d\n", ev.type);
+  }
+}
+
+int main(int argc, char **argv) {
+  X11Context x11ctx;
+  init_x11_context(&x11ctx);
+
+  cairo_surface_t *sfc;
+  create_x11_surface(&sfc, &x11ctx);
+
+  cairo_t *ctx = cairo_create(sfc);
+
+  paint(ctx);
+
+  while (1) {
+    processEvent(&x11ctx, ctx);
+  }
 
   cairo_destroy(ctx);
-
-  // while (1) {
-  //   processEvent(display, window, ximage, width, height);
-  // }
-
-  cairo_check_event(sfc, 1);
-
   cairo_close_x11_surface(sfc);
 
   return 0;
