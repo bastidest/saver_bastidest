@@ -4,6 +4,8 @@
 #include <cairo/cairo-xlib.h>
 #include <cairo/cairo.h>
 
+#include <assert.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -86,9 +88,15 @@ static void cairo_paint_text(cairo_t *ctx, char *text) {
 }
 
 static void paint(cairo_t *ctx, cairo_surface_t *cairo_surface) {
-  printf("repaint\n");
+  printf("paint\n");
+  static char time_str[64];
+
+  time_t t = time(NULL);
+  struct tm *tm = localtime(&t);
+  assert(strftime(time_str, sizeof(time_str), "%c", tm));
+  
   cairo_paint_image(ctx, "bg1.png");
-  cairo_paint_text(ctx, "Test Text");
+  cairo_paint_text(ctx, time_str);
   cairo_surface_flush(cairo_surface);
 }
 
