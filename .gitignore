@@ -1,5 +1,3 @@
-a.out
 cairo
-main
-xcb
-bg1.png
+.vscode
+test_string_set

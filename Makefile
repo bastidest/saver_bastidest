@@ -1,5 +1,7 @@
-cairo: cairo.c
-	gcc -Wall cairo.c -o cairo `pkg-config --cflags --libs cairo x11`
+CFLAGS  = -g -Wall
 
-x11: main.c
-	gcc -Wall main.c -o main `pkg-config --cflags --libs x11`
+cairo: cairo.c
+	$(CC) $(CFLAGS) $^ -o $@ `pkg-config --cflags --libs cairo x11`
+
+test_string_set: test_string_set.c string_set.c
+	$(CC) $(CFLAGS) $^ -o $@
