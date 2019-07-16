@@ -9,11 +9,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <sys/select.h>
+
 typedef struct {
   Display *display;
   Screen *screen;
   Visual *visual;
   Window window;
+  int fd;
 } X11Context;
 
 typedef struct {
@@ -42,6 +45,7 @@ static int init_x11_context(X11Context *c, unsigned int parent_window_id) {
   c->display = XOpenDisplay(NULL);
   c->screen = ScreenOfDisplay(c->display, 0);
   c->visual = c->screen->root_visual;
+  c->fd = ConnectionNumber(c->display);
 
   u_int32_t width = WidthOfScreen(c->screen);
   u_int32_t height = HeightOfScreen(c->screen);
@@ -206,10 +210,33 @@ int main(int argc, char **argv) {
 
   cairo_t *ctx = cairo_create(cairo_surface);
 
+  while(XPending(x11_context.display)) {
+    processEvent(&x11_context, ctx, cairo_surface, &draw_data);
+  }
   paint(ctx, cairo_surface, &draw_data);
 
+  fd_set events;
+  struct timeval tv;
+
   while (1) {
-    processEvent(&x11_context, ctx, cairo_surface, &draw_data);
+    FD_ZERO(&events);
+    FD_SET(x11_context.fd, &events);
+
+    tv.tv_usec = 0;
+    tv.tv_sec = 1;
+    
+    int fds_ready = select(x11_context.fd + 1, &events, NULL, NULL, &tv);
+    if(fds_ready == 0) {
+      // timer
+      paint(ctx, cairo_surface, &draw_data);
+    } else if(fds_ready > 0) {
+      // process available events
+      while(XPending(x11_context.display)) {
+        processEvent(&x11_context, ctx, cairo_surface, &draw_data);
+      }
+    } else {
+      fprintf(stderr, "event loop error\n");
+    }
   }
 
   cairo_destroy(ctx);
