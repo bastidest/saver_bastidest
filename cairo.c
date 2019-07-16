@@ -23,8 +23,12 @@ typedef struct {
 
 typedef struct {
   char *image_path;
-  char *time_format;
+  char *time_format_primary;
+  char *time_format_secondary;
+  struct tm *current_time;
   ScreenSize screen_size;
+  float time_offset_left;
+  float time_offset_bottom;
 } DrawData;
 
 void cairo_close_x11_surface(cairo_surface_t *sfc) {
@@ -96,37 +100,57 @@ static int cairo_paint_image(cairo_t *ctx, char *path) {
   return 0;
 }
 
-static void cairo_paint_text(cairo_t *ctx, char *text, DrawData *draw_data) {
+static void cairo_paint_text(cairo_t *ctx, char *text, float font_size, float pos_x, float pos_y) {
   cairo_text_extents_t extents;
-
-  double x, y;
 
   cairo_select_font_face(ctx, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
 
-  cairo_set_font_size(ctx, 100.0);
+  cairo_set_font_size(ctx, font_size);
   cairo_text_extents(ctx, text, &extents);
 
-  x = 25.0;
-  y = draw_data->screen_size.height - 50.0;
-
-  cairo_set_source_rgba(ctx, 1, 1, 1, 0.8);
-  cairo_move_to(ctx, x, y);
+  cairo_set_source_rgba(ctx, 1, 1, 1, 1);
+  cairo_move_to(ctx, pos_x, pos_y);
   cairo_show_text(ctx, text);
+}
+
+static void cairo_paint_text_primary(cairo_t *ctx, DrawData *draw_data) {
+  static char time_str[64];
+  assert(strftime(time_str, sizeof(time_str), draw_data->time_format_primary, draw_data->current_time));
+
+  cairo_paint_text(
+    ctx,
+    time_str,
+    100.0,
+    draw_data->time_offset_left,
+    draw_data->screen_size.height - draw_data->time_offset_bottom - 60.0
+  );
+}
+
+static void cairo_paint_text_secondary(cairo_t *ctx, DrawData *draw_data) {
+  static char time_str[64];
+  assert(strftime(time_str, sizeof(time_str), draw_data->time_format_secondary, draw_data->current_time));
+
+  cairo_paint_text(
+    ctx,
+    time_str,
+    50.0,
+    draw_data->time_offset_left,
+    draw_data->screen_size.height - draw_data->time_offset_bottom
+  );
 }
 
 static void paint(cairo_t *ctx, cairo_surface_t *cairo_surface, DrawData *draw_data) {
   printf("paint\n");
-  static char time_str[64];
-
-  time_t t = time(NULL);
-  struct tm *tm = localtime(&t);
-  assert(strftime(time_str, sizeof(time_str), draw_data->time_format, tm));
 
   if(cairo_paint_image(ctx, draw_data->image_path)) {
     fprintf(stderr, "unable to open image '%s'\n", draw_data->image_path);
   }
 
-  cairo_paint_text(ctx, time_str, draw_data);
+  time_t t = time(NULL);
+  draw_data->current_time = localtime(&t);
+
+  cairo_paint_text_primary(ctx, draw_data);
+  cairo_paint_text_secondary(ctx, draw_data);
   cairo_surface_flush(cairo_surface);
 }
 
@@ -163,7 +187,10 @@ int main(int argc, char **argv) {
   }
   DrawData draw_data;
   draw_data.image_path = argv[1];
-  draw_data.time_format = "%c";
+  draw_data.time_format_primary = "%T";
+  draw_data.time_format_secondary = "%A, %B %d";
+  draw_data.time_offset_left = 25.0;
+  draw_data.time_offset_bottom = 60.0;
 
   unsigned int parent_window_id = 0;
   char* parent_window_id_str = getenv("XSCREENSAVER_WINDOW");
