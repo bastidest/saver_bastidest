@@ -10,8 +10,9 @@
 #include <stdlib.h>
 
 typedef struct {
-  Display* display;
-  Visual* visual;
+  Display *display;
+  Screen *screen;
+  Visual *visual;
   Window window;
 } X11Context;
 
@@ -28,10 +29,12 @@ void cairo_close_x11_surface(cairo_surface_t *sfc) {
 }
 
 static int init_x11_context(X11Context *c, unsigned int parent_window_id) {
-  u_int16_t width = 1280;
-  u_int32_t height = 720;
   c->display = XOpenDisplay(NULL);
-  c->visual = DefaultVisual(c->display, 0);
+  c->screen = ScreenOfDisplay(c->display, 0);
+  c->visual = c->screen->root_visual;
+
+  u_int32_t width = WidthOfScreen(c->screen);
+  u_int32_t height = HeightOfScreen(c->screen);
 
   unsigned int parent_window;
   if(parent_window_id) {
