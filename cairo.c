@@ -15,6 +15,11 @@ typedef struct {
   Window window;
 } X11Context;
 
+typedef struct {
+  char *image_path;
+  char *time_format;
+} DrawData;
+
 void cairo_close_x11_surface(cairo_surface_t *sfc) {
   Display *dsp = cairo_xlib_surface_get_display(sfc);
 
@@ -55,9 +60,20 @@ static int create_x11_surface(cairo_surface_t **sfc, X11Context *c) {
   return 0;
 }
 
-static void cairo_paint_image(cairo_t *ctx, char *path) {
+static int cairo_paint_image(cairo_t *ctx, char *path) {
   cairo_surface_t *image;
   image = cairo_image_surface_create_from_png(path);
+
+  cairo_status_t status = cairo_surface_status(image);
+  if(
+    status == CAIRO_STATUS_NO_MEMORY ||
+    status == CAIRO_STATUS_FILE_NOT_FOUND ||
+    status == CAIRO_STATUS_READ_ERROR || 
+    status == CAIRO_STATUS_PNG_ERROR
+    ) {
+      cairo_surface_destroy(image);
+      return 1;
+    }
 
   // int w = cairo_image_surface_get_width(image);
   // int h = cairo_image_surface_get_height(image);
@@ -67,6 +83,7 @@ static void cairo_paint_image(cairo_t *ctx, char *path) {
   cairo_paint(ctx);
 
   cairo_surface_destroy(image);
+  return 0;
 }
 
 static void cairo_paint_text(cairo_t *ctx, char *text) {
@@ -87,20 +104,23 @@ static void cairo_paint_text(cairo_t *ctx, char *text) {
   cairo_show_text(ctx, text);
 }
 
-static void paint(cairo_t *ctx, cairo_surface_t *cairo_surface) {
+static void paint(cairo_t *ctx, cairo_surface_t *cairo_surface, DrawData *draw_data) {
   printf("paint\n");
   static char time_str[64];
 
   time_t t = time(NULL);
   struct tm *tm = localtime(&t);
-  assert(strftime(time_str, sizeof(time_str), "%c", tm));
-  
-  cairo_paint_image(ctx, "bg1.png");
+  assert(strftime(time_str, sizeof(time_str), draw_data->time_format, tm));
+
+  if(cairo_paint_image(ctx, draw_data->image_path)) {
+    fprintf(stderr, "unable to open image '%s'\n", draw_data->image_path);
+  }
+
   cairo_paint_text(ctx, time_str);
   cairo_surface_flush(cairo_surface);
 }
 
-static void processEvent(X11Context *x11_context, cairo_t *cairo_context, cairo_surface_t *cairo_surface) {
+static void processEvent(X11Context *x11_context, cairo_t *cairo_context, cairo_surface_t *cairo_surface, DrawData *draw_data) {
   XEvent ev;
   XNextEvent(x11_context->display, &ev);
   switch (ev.type) {
@@ -113,7 +133,7 @@ static void processEvent(X11Context *x11_context, cairo_t *cairo_context, cairo_
   }
   case Expose:
     printf("Expose\n");
-    paint(cairo_context, cairo_surface);
+    paint(cairo_context, cairo_surface, draw_data);
     break;
   case ButtonPress:
     printf("ButtonPress\n");
@@ -125,9 +145,18 @@ static void processEvent(X11Context *x11_context, cairo_t *cairo_context, cairo_
 }
 
 int main(int argc, char **argv) {
+  if(argc < 2) {
+    fprintf(stderr, "No background image provided, exiting...\n");
+    return -1;
+  }
+  DrawData draw_data;
+  draw_data.image_path = argv[1];
+  draw_data.time_format = "%c";
+
   unsigned int parent_window_id = 0;
-  if(argc >= 2) {
-    parent_window_id = atoi(argv[1]);
+  char* parent_window_id_str = getenv("XSCREENSAVER_WINDOW");
+  if(parent_window_id_str != NULL) {
+    parent_window_id = atoi(parent_window_id_str);
   }
 
   X11Context x11_context;
@@ -138,10 +167,10 @@ int main(int argc, char **argv) {
 
   cairo_t *ctx = cairo_create(cairo_surface);
 
-  paint(ctx, cairo_surface);
+  paint(ctx, cairo_surface, &draw_data);
 
   while (1) {
-    processEvent(&x11_context, ctx, cairo_surface);
+    processEvent(&x11_context, ctx, cairo_surface, &draw_data);
   }
 
   cairo_destroy(ctx);
