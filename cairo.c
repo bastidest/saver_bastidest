@@ -17,8 +17,14 @@ typedef struct {
 } X11Context;
 
 typedef struct {
+  u_int16_t width;
+  u_int16_t height;
+} ScreenSize;
+
+typedef struct {
   char *image_path;
   char *time_format;
+  ScreenSize screen_size;
 } DrawData;
 
 void cairo_close_x11_surface(cairo_surface_t *sfc) {
@@ -55,11 +61,12 @@ static int init_x11_context(X11Context *c, unsigned int parent_window_id) {
   return 0;
 }
 
-static int create_x11_surface(cairo_surface_t **sfc, X11Context *c) {
+static int create_x11_surface(cairo_surface_t **sfc, X11Context *c, DrawData *draw_data) {
   XWindowAttributes attrs;
   XGetWindowAttributes(c->display, c->window, &attrs);
+  draw_data->screen_size.height = attrs.height;
+  draw_data->screen_size.width = attrs.width;
   *sfc = cairo_xlib_surface_create(c->display, c->window, c->visual, attrs.width, attrs.height);
-  // cairo_xlib_surface_set_size(*sfc, width, height);
   return 0;
 }
 
@@ -89,7 +96,7 @@ static int cairo_paint_image(cairo_t *ctx, char *path) {
   return 0;
 }
 
-static void cairo_paint_text(cairo_t *ctx, char *text) {
+static void cairo_paint_text(cairo_t *ctx, char *text, DrawData *draw_data) {
   cairo_text_extents_t extents;
 
   double x, y;
@@ -100,7 +107,7 @@ static void cairo_paint_text(cairo_t *ctx, char *text) {
   cairo_text_extents(ctx, text, &extents);
 
   x = 25.0;
-  y = 150.0;
+  y = draw_data->screen_size.height - 50.0;
 
   cairo_set_source_rgba(ctx, 1, 1, 1, 0.8);
   cairo_move_to(ctx, x, y);
@@ -119,7 +126,7 @@ static void paint(cairo_t *ctx, cairo_surface_t *cairo_surface, DrawData *draw_d
     fprintf(stderr, "unable to open image '%s'\n", draw_data->image_path);
   }
 
-  cairo_paint_text(ctx, time_str);
+  cairo_paint_text(ctx, time_str, draw_data);
   cairo_surface_flush(cairo_surface);
 }
 
@@ -131,6 +138,8 @@ static void processEvent(X11Context *x11_context, cairo_t *cairo_context, cairo_
     XConfigureEvent *event;
     event = ((XConfigureEvent*) &ev);
     printf("ConfigureNotify width: %d, height: %d\n", event->width, event->height);
+    draw_data->screen_size.height = event->height;
+    draw_data->screen_size.width = event->width;
     cairo_xlib_surface_set_size(cairo_surface, event->width, event->height);
     break;
   }
@@ -166,7 +175,7 @@ int main(int argc, char **argv) {
   init_x11_context(&x11_context, parent_window_id);
 
   cairo_surface_t *cairo_surface;
-  create_x11_surface(&cairo_surface, &x11_context);
+  create_x11_surface(&cairo_surface, &x11_context, &draw_data);
 
   cairo_t *ctx = cairo_create(cairo_surface);
 
