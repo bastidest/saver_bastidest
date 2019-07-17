@@ -1,3 +1,4 @@
-cairo
 .vscode
+cairo
 test_string_set
+*.o
