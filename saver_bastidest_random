@@ -1,0 +1,5 @@
+#!/bin/bash
+
+PICTURE=$(find $HOME/Pictures -type f -name '*.png' | shuf -n 1)
+
+/usr/local/bin/saver_bastidest/saver_bastidest $PICTURE
