@@ -96,7 +96,7 @@ static int init_x11_context(X11Context *c, unsigned int parent_window_id) {
     printf("Attaching to parent XID %d\n", (int)parent_window_id);
     parent_window = parent_window_id;
   } else {
-    parent_window = c->screen->root_visual;
+    parent_window = c->screen->root;
   }
 
   /* Setup the event mask */
