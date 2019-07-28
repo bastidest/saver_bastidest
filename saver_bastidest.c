@@ -108,12 +108,12 @@ static int init_x11_context(X11Context *c, unsigned int parent_window_id) {
   xcb_create_window(c->connection,                 /* Connection          */
                     XCB_COPY_FROM_PARENT,          /* depth (same as root)*/
                     c->window,                     /* window Id           */
-                    c->screen->root,               /* parent window       */
+                    parent_window,                 /* parent window       */
                     0, 0,                          /* x, y                */
                     width, height,                 /* width, height       */
                     0,                             /* border_width        */
                     XCB_WINDOW_CLASS_INPUT_OUTPUT, /* class               */
-                    parent_window,                 /* visual              */
+                    c->screen->root_visual,        /* visual              */
                     XCB_CW_EVENT_MASK, /* enable the following events */
                     (const void *)&(c->event_mask));
   /* Map the window on the screen */
