@@ -5,11 +5,13 @@
 #include <xcb/xproto.h>
 
 #include <assert.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
 #include <sys/select.h>
+#include <sys/time.h>
 
 #include "string_set.h"
 
@@ -45,6 +47,8 @@ typedef struct {
   float time_offset_left;
   float time_offset_bottom;
 } DrawData;
+
+X11Context x11_context;
 
 static void cairo_close_x11_surface(cairo_surface_t *sfc) {
   cairo_surface_destroy(sfc);
@@ -207,8 +211,16 @@ static void paint(X11Context *x11_context, cairo_t *ctx,
     fprintf(stderr, "unable to open image '%s'\n", draw_data->image_path);
   }
 
-  time_t t = time(NULL);
-  draw_data->current_time = localtime(&t);
+  struct timeval t;
+  gettimeofday(&t, 0);
+  time_t time = t.tv_sec;
+
+  /* round the seconds up, if really close */
+  if (t.tv_usec > 900000) {
+    time++;
+  }
+
+  draw_data->current_time = localtime(&time);
 
   cairo_paint_text_primary(ctx, draw_data);
   cairo_paint_text_secondary(ctx, draw_data);
@@ -244,8 +256,8 @@ static int process_event(X11Context *x11_context, cairo_t *cairo_context,
   return 0;
 }
 
-int event_loop(X11Context *x11_context, cairo_t *cairo_context,
-               cairo_surface_t *cairo_surface, DrawData *draw_data) {
+static int event_loop(X11Context *x11_context, cairo_t *cairo_context,
+                      cairo_surface_t *cairo_surface, DrawData *draw_data) {
   xcb_generic_event_t *event;
   int done = 0;
   while (!done && (event = xcb_wait_for_event(x11_context->connection))) {
@@ -253,6 +265,41 @@ int event_loop(X11Context *x11_context, cairo_t *cairo_context,
                          event);
     free(event);
   }
+  return 0;
+}
+
+void tock() {
+  xcb_expose_event_t invalidate_event;
+  invalidate_event.window = x11_context.window;
+  invalidate_event.response_type = XCB_EXPOSE;
+  invalidate_event.x = 0;
+  invalidate_event.y = 0;
+  invalidate_event.width = 0;
+  invalidate_event.height = 0;
+  xcb_send_event(x11_context.connection, 0, x11_context.window,
+                 XCB_EVENT_MASK_EXPOSURE, (char *)&invalidate_event);
+
+  xcb_flush(x11_context.connection);
+}
+
+static int start_timer() {
+  static timer_t timer;
+  static struct sigevent sigev;
+  sigev.sigev_notify = SIGEV_THREAD;
+  sigev.sigev_notify_function = tock;
+  sigev.sigev_notify_attributes = 0;
+  sigev.sigev_value.sival_ptr = &timer;
+  timer_create(CLOCK_REALTIME, &sigev, &timer);
+
+  struct itimerspec timerspec;
+  timerspec.it_interval.tv_nsec = 0;
+  timerspec.it_interval.tv_sec = 1;
+  timerspec.it_value.tv_nsec = 0;
+  timerspec.it_value.tv_sec = 1;
+
+  /* use TIMER_ABSTIME to sync the timer to the system clock */
+  timer_settime(timer, TIMER_ABSTIME, &timerspec, 0);
+
   return 0;
 }
 
@@ -277,7 +324,6 @@ int main(int argc, char **argv) {
     parent_window_id = (unsigned int)atoi(parent_window_id_str);
   }
 
-  X11Context x11_context;
   init_x11_context(&x11_context, parent_window_id);
 
   cairo_surface_t *cairo_surface;
@@ -285,6 +331,7 @@ int main(int argc, char **argv) {
 
   cairo_t *ctx = cairo_create(cairo_surface);
 
+  start_timer();
   event_loop(&x11_context, ctx, cairo_surface, &draw_data);
 
   string_set_destroy(draw_data.image_cache);
