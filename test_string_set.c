@@ -8,6 +8,7 @@ void test_0() {
   StringSet set;
   assert(string_set_init(&set) == 0);
   assert(string_set_size(&set) == 0);
+  assert(string_set_destroy(&set) == 0);
 }
 
 void test_1() {

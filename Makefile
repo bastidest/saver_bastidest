@@ -1,5 +1,5 @@
 CFLAGS  = -Wall -pedantic -Wextra -Wconversion
-LDFLAGS = `pkg-config --cflags --libs cairo x11`
+LDFLAGS = `pkg-config --cflags --libs cairo xcb`
 
 ifeq ($(PREFIX),)
     PREFIX := /usr/local

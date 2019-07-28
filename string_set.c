@@ -27,6 +27,7 @@ int string_set_destroy(StringSet *set) {
 int string_set_add(StringSet *set, char *string, void *element) {
   if(!set->first) {
     StringSetEntry *new = malloc(sizeof(StringSetEntry));
+    new->next = 0;
     new->string = string;
     new->element = element;
     set->first = new;
@@ -41,6 +42,7 @@ int string_set_add(StringSet *set, char *string, void *element) {
     }
     if(!current->next) {
       StringSetEntry *new = malloc(sizeof(StringSetEntry));
+      new->next = 0;
       new->string = string;
       new->element = element;
       current->next = new;
