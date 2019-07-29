@@ -140,7 +140,7 @@ static int create_x11_surface(cairo_surface_t **sfc, X11Context *c,
   return 0;
 }
 
-static int cairo_paint_image(cairo_t *ctx, char *path, StringSet *cache) {
+static int cairo_paint_background(cairo_t *ctx, char *path, StringSet *cache) {
   cairo_surface_t *image;
   if (string_set_get(cache, path, (void **)(&image))) {
     // cache miss
@@ -207,7 +207,16 @@ static void paint(X11Context *x11_context, cairo_t *ctx,
                   cairo_surface_t *cairo_surface, DrawData *draw_data) {
   DEBUG_PRINT("paint\n");
 
-  if (cairo_paint_image(ctx, draw_data->image_path, draw_data->image_cache)) {
+  /* Create a straging surface to paint to in order to prevent displaying half
+   * drawn frames */
+  cairo_surface_t *stating_surface = cairo_surface_create_similar_image(
+      cairo_surface, 0, draw_data->screen_size.width,
+      draw_data->screen_size.height);
+
+  cairo_t *staging_context = cairo_create(stating_surface);
+
+  if (cairo_paint_background(staging_context, draw_data->image_path,
+                             draw_data->image_cache)) {
     fprintf(stderr, "unable to open image '%s'\n", draw_data->image_path);
   }
 
@@ -222,9 +231,25 @@ static void paint(X11Context *x11_context, cairo_t *ctx,
 
   draw_data->current_time = localtime(&time);
 
-  cairo_paint_text_primary(ctx, draw_data);
-  cairo_paint_text_secondary(ctx, draw_data);
-  cairo_surface_flush(cairo_surface);
+  cairo_paint_text_primary(staging_context, draw_data);
+  cairo_paint_text_secondary(staging_context, draw_data);
+  cairo_destroy(staging_context);
+
+  /* Flush all pending draws to the staging surface */
+  cairo_surface_flush(stating_surface);
+
+  /* Create a png for debugging purposes */
+  /* cairo_status_t status = cairo_surface_write_to_png(stating_surface,
+   * "test.png"); */
+  /* printf("status: %s\n", cairo_status_to_string(status)); */
+
+  /* Copy the staging surface to the X11 surface */
+  cairo_set_source_surface(ctx, stating_surface, 0, 0);
+  cairo_rectangle(ctx, 0, 0, draw_data->screen_size.width,
+                  draw_data->screen_size.height);
+  cairo_fill(ctx);
+
+  cairo_surface_destroy(stating_surface);
 
   xcb_flush(x11_context->connection);
 }
