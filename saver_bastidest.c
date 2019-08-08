@@ -26,7 +26,8 @@
 typedef enum _scale_type {
   SCALE_TYPE_STRETCH,
   SCALE_TYPE_FIT,
-  SCALE_TYPE_COVER
+  SCALE_TYPE_COVER,
+  SCALE_TYPE_CENTER
 } scale_type_t;
 
 typedef struct {
@@ -39,8 +40,8 @@ typedef struct {
 } X11Context;
 
 typedef struct {
-  int width;
   int height;
+  int width;
 } ScreenSize;
 
 typedef struct {
@@ -147,6 +148,29 @@ static int create_x11_surface(cairo_surface_t **sfc, X11Context *c,
   return 0;
 }
 
+static int cairo_scale_context(cairo_t *ctx, int image_width, int image_height,
+                               DrawData *draw_data) {
+  switch (draw_data->scale_type) {
+  case SCALE_TYPE_COVER:
+    break;
+  case SCALE_TYPE_FIT:
+    break;
+  case SCALE_TYPE_STRETCH:
+    cairo_scale(ctx, (float)(draw_data->screen_size.width) / (float)image_width,
+                (float)(draw_data->screen_size.height) / (float)image_height);
+    break;
+  case SCALE_TYPE_CENTER: {
+    int overflow_x = image_width - draw_data->screen_size.width;
+    int overflow_y = image_height - draw_data->screen_size.height;
+    int offset_x = overflow_x / 2;
+    int offset_y = overflow_y / 2;
+    cairo_translate(ctx, (float)-offset_x, (float)-offset_y);
+    break;
+  }
+  }
+  return 0;
+}
+
 static int cairo_paint_background(cairo_t *ctx, DrawData *draw_data) {
   cairo_surface_t *image;
   if (string_set_get(draw_data->image_cache, draw_data->image_path,
@@ -164,11 +188,18 @@ static int cairo_paint_background(cairo_t *ctx, DrawData *draw_data) {
     return 1;
   }
 
+  // fill the background with a plain black color to prevent old images from
+  // showing
+  cairo_rectangle(ctx, 0, 0, draw_data->screen_size.width,
+                  draw_data->screen_size.height);
+  cairo_set_source_rgb(ctx, 0, 0, 0);
+  cairo_fill(ctx);
+
   const int image_width = cairo_image_surface_get_width(image);
   const int image_height = cairo_image_surface_get_height(image);
   cairo_save(ctx);
-  cairo_scale(ctx, (float)(draw_data->screen_size.width) / (float)image_width,
-              (float)(draw_data->screen_size.height) / (float)image_height);
+
+  cairo_scale_context(ctx, image_width, image_height, draw_data);
 
   cairo_set_source_surface(ctx, image, 0, 0);
   cairo_paint(ctx);
@@ -349,7 +380,10 @@ int main(int argc, char **argv) {
   draw_data.time_format_secondary = "%A, %B %d";
   draw_data.time_offset_left = 25.0;
   draw_data.time_offset_bottom = 60.0;
-  draw_data.scale_type = SCALE_TYPE_STRETCH;
+  // draw_data.scale_type = SCALE_TYPE_STRETCH;
+  // draw_data.scale_type = SCALE_TYPE_FIT;
+  // draw_data.scale_type = SCALE_TYPE_COVER;
+  draw_data.scale_type = SCALE_TYPE_CENTER;
   StringSet image_cache;
   draw_data.image_cache = &image_cache;
   string_set_init(draw_data.image_cache);
