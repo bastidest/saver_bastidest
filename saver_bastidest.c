@@ -23,6 +23,12 @@
   } while (0)
 #endif
 
+typedef enum _scale_type {
+  SCALE_TYPE_STRETCH,
+  SCALE_TYPE_FIT,
+  SCALE_TYPE_COVER
+} scale_type_t;
+
 typedef struct {
   xcb_connection_t *connection;
   xcb_screen_t *screen;
@@ -46,6 +52,7 @@ typedef struct {
   ScreenSize screen_size;
   float time_offset_left;
   float time_offset_bottom;
+  scale_type_t scale_type;
 } DrawData;
 
 X11Context x11_context;
@@ -140,12 +147,13 @@ static int create_x11_surface(cairo_surface_t **sfc, X11Context *c,
   return 0;
 }
 
-static int cairo_paint_background(cairo_t *ctx, char *path, StringSet *cache) {
+static int cairo_paint_background(cairo_t *ctx, DrawData *draw_data) {
   cairo_surface_t *image;
-  if (string_set_get(cache, path, (void **)(&image))) {
+  if (string_set_get(draw_data->image_cache, draw_data->image_path,
+                     (void **)(&image))) {
     // cache miss
-    image = cairo_image_surface_create_from_png(path);
-    string_set_add(cache, path, image);
+    image = cairo_image_surface_create_from_png(draw_data->image_path);
+    string_set_add(draw_data->image_cache, draw_data->image_path, image);
   }
 
   cairo_status_t status = cairo_surface_status(image);
@@ -156,12 +164,15 @@ static int cairo_paint_background(cairo_t *ctx, char *path, StringSet *cache) {
     return 1;
   }
 
-  // int w = cairo_image_surface_get_width(image);
-  // int h = cairo_image_surface_get_height(image);
-  // cairo_scale(ctx, 256.0 / w, 256.0 / h);
+  const int image_width = cairo_image_surface_get_width(image);
+  const int image_height = cairo_image_surface_get_height(image);
+  cairo_save(ctx);
+  cairo_scale(ctx, (float)(draw_data->screen_size.width) / (float)image_width,
+              (float)(draw_data->screen_size.height) / (float)image_height);
 
   cairo_set_source_surface(ctx, image, 0, 0);
   cairo_paint(ctx);
+  cairo_restore(ctx);
 
   // todo: destructor for images
   // cairo_surface_destroy(image);
@@ -215,8 +226,7 @@ static void paint(X11Context *x11_context, cairo_t *ctx,
 
   cairo_t *staging_context = cairo_create(stating_surface);
 
-  if (cairo_paint_background(staging_context, draw_data->image_path,
-                             draw_data->image_cache)) {
+  if (cairo_paint_background(staging_context, draw_data)) {
     fprintf(stderr, "unable to open image '%s'\n", draw_data->image_path);
   }
 
@@ -339,6 +349,7 @@ int main(int argc, char **argv) {
   draw_data.time_format_secondary = "%A, %B %d";
   draw_data.time_offset_left = 25.0;
   draw_data.time_offset_bottom = 60.0;
+  draw_data.scale_type = SCALE_TYPE_STRETCH;
   StringSet image_cache;
   draw_data.image_cache = &image_cache;
   string_set_init(draw_data.image_cache);
