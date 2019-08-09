@@ -14,6 +14,7 @@
 #include <sys/time.h>
 
 #include "string_set.h"
+#include "scale_tranlate.h"
 
 #ifdef DEBUG
 #define DEBUG_PRINT(...) printf("D: " __VA_ARGS__)
@@ -33,8 +34,8 @@ typedef struct {
 } X11Context;
 
 typedef struct {
-  int width;
   int height;
+  int width;
 } ScreenSize;
 
 typedef struct {
@@ -46,6 +47,7 @@ typedef struct {
   ScreenSize screen_size;
   float time_offset_left;
   float time_offset_bottom;
+  scale_type_t scale_type;
 } DrawData;
 
 X11Context x11_context;
@@ -140,12 +142,42 @@ static int create_x11_surface(cairo_surface_t **sfc, X11Context *c,
   return 0;
 }
 
-static int cairo_paint_background(cairo_t *ctx, char *path, StringSet *cache) {
+static int cairo_scale_context(cairo_t *ctx, int image_width, int image_height,
+                               DrawData *draw_data) {
+  ScaleTranslate transformation;
+
+  switch (draw_data->scale_type) {
+  case SCALE_TYPE_FIT:
+  case SCALE_TYPE_COVER:
+    transformation = scale_proportional(
+        draw_data->screen_size.width, draw_data->screen_size.height,
+        image_width, image_height, draw_data->scale_type);
+    break;
+  case SCALE_TYPE_STRETCH:
+    transformation =
+        scale_stretch(draw_data->screen_size.width,
+                      draw_data->screen_size.height, image_width, image_height);
+    break;
+  case SCALE_TYPE_CENTER:
+    transformation = translate_center(draw_data->screen_size.width,
+                                      draw_data->screen_size.height,
+                                      image_width, image_height);
+    break;
+  }
+
+  cairo_translate(ctx, transformation.translate_x, transformation.translate_y);
+  cairo_scale(ctx, transformation.scale_x, transformation.scale_y);
+
+  return 0;
+}
+
+static int cairo_paint_background(cairo_t *ctx, DrawData *draw_data) {
   cairo_surface_t *image;
-  if (string_set_get(cache, path, (void **)(&image))) {
+  if (string_set_get(draw_data->image_cache, draw_data->image_path,
+                     (void **)(&image))) {
     // cache miss
-    image = cairo_image_surface_create_from_png(path);
-    string_set_add(cache, path, image);
+    image = cairo_image_surface_create_from_png(draw_data->image_path);
+    string_set_add(draw_data->image_cache, draw_data->image_path, image);
   }
 
   cairo_status_t status = cairo_surface_status(image);
@@ -156,12 +188,22 @@ static int cairo_paint_background(cairo_t *ctx, char *path, StringSet *cache) {
     return 1;
   }
 
-  // int w = cairo_image_surface_get_width(image);
-  // int h = cairo_image_surface_get_height(image);
-  // cairo_scale(ctx, 256.0 / w, 256.0 / h);
+  // fill the background with a plain black color to prevent old images from
+  // showing
+  cairo_rectangle(ctx, 0, 0, draw_data->screen_size.width,
+                  draw_data->screen_size.height);
+  cairo_set_source_rgb(ctx, 0, 0, 0);
+  cairo_fill(ctx);
+
+  const int image_width = cairo_image_surface_get_width(image);
+  const int image_height = cairo_image_surface_get_height(image);
+  cairo_save(ctx);
+
+  cairo_scale_context(ctx, image_width, image_height, draw_data);
 
   cairo_set_source_surface(ctx, image, 0, 0);
   cairo_paint(ctx);
+  cairo_restore(ctx);
 
   // todo: destructor for images
   // cairo_surface_destroy(image);
@@ -215,8 +257,7 @@ static void paint(X11Context *x11_context, cairo_t *ctx,
 
   cairo_t *staging_context = cairo_create(stating_surface);
 
-  if (cairo_paint_background(staging_context, draw_data->image_path,
-                             draw_data->image_cache)) {
+  if (cairo_paint_background(staging_context, draw_data)) {
     fprintf(stderr, "unable to open image '%s'\n", draw_data->image_path);
   }
 
@@ -339,6 +380,10 @@ int main(int argc, char **argv) {
   draw_data.time_format_secondary = "%A, %B %d";
   draw_data.time_offset_left = 25.0;
   draw_data.time_offset_bottom = 60.0;
+  // draw_data.scale_type = SCALE_TYPE_STRETCH;
+  // draw_data.scale_type = SCALE_TYPE_FIT;
+  // draw_data.scale_type = SCALE_TYPE_CENTER;
+  draw_data.scale_type = SCALE_TYPE_COVER;
   StringSet image_cache;
   draw_data.image_cache = &image_cache;
   string_set_init(draw_data.image_cache);
