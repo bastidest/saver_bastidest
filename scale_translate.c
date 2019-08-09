@@ -1,4 +1,4 @@
-#include "scale_tranlate.h"
+#include "scale_translate.h"
 
 ScaleTranslate scale_proportional(int screen_width, int screen_height,
                                          int image_width, int image_height,

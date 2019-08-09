@@ -14,7 +14,7 @@
 #include <sys/time.h>
 
 #include "string_set.h"
-#include "scale_tranlate.h"
+#include "scale_translate.h"
 
 #ifdef DEBUG
 #define DEBUG_PRINT(...) printf("D: " __VA_ARGS__)
