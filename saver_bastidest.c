@@ -150,20 +150,61 @@ static int create_x11_surface(cairo_surface_t **sfc, X11Context *c,
 
 static int cairo_scale_context(cairo_t *ctx, int image_width, int image_height,
                                DrawData *draw_data) {
+  int overflow_x = image_width - draw_data->screen_size.width;
+  int overflow_y = image_height - draw_data->screen_size.height;
+
+  int offset_x = overflow_x / 2;
+  int offset_y = overflow_y / 2;
+
+  double ratio_x =
+      ((double)image_width) / ((double)draw_data->screen_size.width);
+  double ratio_y =
+      ((double)image_height) / ((double)draw_data->screen_size.height);
+
   switch (draw_data->scale_type) {
-  case SCALE_TYPE_COVER:
+  case SCALE_TYPE_FIT: {
+    double scale_factor, translation_x, translation_y;
+    if (ratio_x > ratio_y) {
+      scale_factor = 1 / ratio_x;
+      translation_x = 0.;
+      translation_y = -(((double)(image_height)) / ratio_x -
+                        ((double)draw_data->screen_size.height)) /
+                      (2.0);
+    } else {
+      scale_factor = 1 / ratio_y;
+      translation_y = 0.;
+      translation_x = -(((double)(image_width)) / ratio_y -
+                        ((double)draw_data->screen_size.width)) /
+                      (2.0);
+    }
+    cairo_translate(ctx, translation_x, translation_y);
+    cairo_scale(ctx, scale_factor, scale_factor);
     break;
-  case SCALE_TYPE_FIT:
+  }
+  case SCALE_TYPE_COVER: {
+    double scale_factor, translation_x, translation_y;
+    if (ratio_x < ratio_y) {
+      scale_factor = 1 / ratio_x;
+      translation_x = 0.;
+      translation_y = -(((double)(image_height)) / ratio_x -
+                        ((double)draw_data->screen_size.height)) /
+                      (2.0);
+    } else {
+      scale_factor = 1 / ratio_y;
+      translation_y = 0.;
+      translation_x = -(((double)(image_width)) / ratio_y -
+                        ((double)draw_data->screen_size.width)) /
+                      (2.0);
+    }
+    cairo_translate(ctx, translation_x, translation_y);
+    cairo_scale(ctx, scale_factor, scale_factor);
     break;
+  }
   case SCALE_TYPE_STRETCH:
     cairo_scale(ctx, (float)(draw_data->screen_size.width) / (float)image_width,
                 (float)(draw_data->screen_size.height) / (float)image_height);
     break;
   case SCALE_TYPE_CENTER: {
-    int overflow_x = image_width - draw_data->screen_size.width;
-    int overflow_y = image_height - draw_data->screen_size.height;
-    int offset_x = overflow_x / 2;
-    int offset_y = overflow_y / 2;
     cairo_translate(ctx, (float)-offset_x, (float)-offset_y);
     break;
   }
@@ -381,9 +422,9 @@ int main(int argc, char **argv) {
   draw_data.time_offset_left = 25.0;
   draw_data.time_offset_bottom = 60.0;
   // draw_data.scale_type = SCALE_TYPE_STRETCH;
-  // draw_data.scale_type = SCALE_TYPE_FIT;
+  draw_data.scale_type = SCALE_TYPE_FIT;
   // draw_data.scale_type = SCALE_TYPE_COVER;
-  draw_data.scale_type = SCALE_TYPE_CENTER;
+  // draw_data.scale_type = SCALE_TYPE_CENTER;
   StringSet image_cache;
   draw_data.image_cache = &image_cache;
   string_set_init(draw_data.image_cache);
