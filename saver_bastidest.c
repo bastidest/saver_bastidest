@@ -14,6 +14,7 @@
 #include <sys/time.h>
 
 #include "string_set.h"
+#include "scale_tranlate.h"
 
 #ifdef DEBUG
 #define DEBUG_PRINT(...) printf("D: " __VA_ARGS__)
@@ -22,13 +23,6 @@
   do {                                                                         \
   } while (0)
 #endif
-
-typedef enum _scale_type {
-  SCALE_TYPE_STRETCH,
-  SCALE_TYPE_FIT,
-  SCALE_TYPE_COVER,
-  SCALE_TYPE_CENTER
-} scale_type_t;
 
 typedef struct {
   xcb_connection_t *connection;
@@ -55,13 +49,6 @@ typedef struct {
   float time_offset_bottom;
   scale_type_t scale_type;
 } DrawData;
-
-typedef struct {
-  double translate_x;
-  double translate_y;
-  double scale_x;
-  double scale_y;
-} ScaleTranslate;
 
 X11Context x11_context;
 
@@ -153,57 +140,6 @@ static int create_x11_surface(cairo_surface_t **sfc, X11Context *c,
                                   draw_data->screen_size.width,
                                   draw_data->screen_size.height);
   return 0;
-}
-
-static ScaleTranslate scale_proportional(int screen_width, int screen_height,
-                                         int image_width, int image_height,
-                                         scale_type_t scale_type) {
-  double ratio_x = ((double)image_width) / ((double)screen_width);
-  double ratio_y = ((double)image_height) / ((double)screen_height);
-
-  ScaleTranslate ret;
-
-  if ((scale_type == SCALE_TYPE_FIT && ratio_x > ratio_y) ||
-      (scale_type == SCALE_TYPE_COVER && ratio_x < ratio_y)) {
-    ret.scale_x = ret.scale_y = 1 / ratio_x;
-    ret.translate_x = 0.;
-    ret.translate_y =
-        -(((double)(image_height)) / ratio_x - ((double)screen_height)) / (2.0);
-  } else {
-    ret.scale_y = ret.scale_x = 1 / ratio_y;
-    ret.translate_y = 0.;
-    ret.translate_x =
-        -(((double)(image_width)) / ratio_y - ((double)screen_width)) / (2.0);
-  }
-
-  return ret;
-}
-
-static ScaleTranslate scale_stretch(int screen_width, int screen_height,
-                                    int image_width, int image_height) {
-  ScaleTranslate ret;
-
-  ret.scale_x = ((double)screen_width) / ((double)image_width);
-  ret.scale_y = ((double)screen_height) / ((double)image_height);
-
-  ret.translate_x = ret.translate_y = 0;
-
-  return ret;
-}
-
-static ScaleTranslate translate_center(int screen_width, int screen_height,
-                                       int image_width, int image_height) {
-  ScaleTranslate ret;
-
-  int overflow_x = image_width - screen_width;
-  int overflow_y = image_height - screen_height;
-
-  ret.translate_x = -((double)overflow_x) / 2.;
-  ret.translate_y = -((double)overflow_y) / 2.;
-
-  ret.scale_x = ret.scale_y = 1.;
-
-  return ret;
 }
 
 static int cairo_scale_context(cairo_t *ctx, int image_width, int image_height,

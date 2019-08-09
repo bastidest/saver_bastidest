@@ -15,7 +15,7 @@ endif
 
 all: saver_bastidest
 
-saver_bastidest: saver_bastidest.c string_set.o
+saver_bastidest: saver_bastidest.c string_set.o scale_translate.o
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 %.o: %.c
